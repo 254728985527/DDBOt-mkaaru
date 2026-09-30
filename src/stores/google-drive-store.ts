@@ -65,8 +65,13 @@ export default class GoogleDriveStore {
         this.client = null;
         this.access_token = localStorage.getItem('google_access_token') ?? '';
         setTimeout(() => {
-            importExternal('https://accounts.google.com/gsi/client').then(() => this.initialiseClient());
-            importExternal('https://apis.google.com/js/api.js').then(() => this.initialise());
+            if (this.client_id && this.scope) {
+                importExternal('https://accounts.google.com/gsi/client').then(() => this.initialiseClient());
+            }
+
+            if (this.api_key && this.discovery_docs) {
+                importExternal('https://apis.google.com/js/api.js').then(() => this.initialise());
+            }
         }, 3000);
     }
 
@@ -97,6 +102,11 @@ export default class GoogleDriveStore {
     };
 
     initialiseClient = () => {
+        if (!this.client_id || !this.scope || !window.google?.accounts?.oauth2) {
+            this.client = null;
+            return;
+        }
+
         this.client = google.accounts.oauth2.initTokenClient({
             client_id: this.client_id,
             scope: this.scope,
@@ -151,7 +161,7 @@ export default class GoogleDriveStore {
     };
 
     async signIn() {
-        if (!this.is_authorised) {
+        if (!this.is_authorised && this.client) {
             await this.client.requestAccessToken();
         }
     }
