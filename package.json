@@ -6,6 +6,7 @@
         "node": "20.x"
     },
     "scripts": {
+        "dev": "rsbuild dev -o",
         "start": "rsbuild dev -o",
         "build": "rsbuild build",
         "watch": "rsbuild build --watch",
