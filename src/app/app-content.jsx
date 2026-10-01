@@ -45,6 +45,15 @@ const AppContent = observer(() => {
 
     const { recovered_transactions, recoverPendingContracts } = transactions;
     const is_subscribed_to_msg_listener = React.useRef(false);
+
+    useEffect(() => {
+        const fallbackTimeout = window.setTimeout(() => {
+            setIsLoading(false);
+            setIsApiInitialized(true);
+        }, 12000);
+
+        return () => window.clearTimeout(fallbackTimeout);
+    }, []);
     const msg_listener = React.useRef(null);
     const { connectionStatus } = useApiBase();
     const { initTrackJS } = useTrackjs();
@@ -203,14 +212,18 @@ const AppContent = observer(() => {
                 return;
             }
 
-            active_symbols
-                .retrieveActiveSymbols(true)
+            Promise.race([
+                active_symbols.retrieveActiveSymbols(true),
+                new Promise((_, reject) =>
+                    setTimeout(() => reject(new Error('Active symbols loading timeout')), 8000)
+                ),
+            ])
                 .then(() => {
                     setIsLoading(false);
                 })
                 .catch(error => {
                     console.error('[API] Failed to retrieve active symbols:', error);
-                    // Don't stay in loading state if API fails
+                    // The dashboard can render without remote symbols when the API is unavailable.
                     setIsLoading(false);
                 });
         };

@@ -42,57 +42,83 @@ const AppRoot = () => {
     const [, setIsTmbEnabled] = useState(false);
     const { isTmbEnabled } = useTMB();
 
-    // Effect to check TMB status - independent of API initialization
+    // Remote configuration is optional and must never prevent the application from rendering.
     useEffect(() => {
+        let cancelled = false;
         const checkTmbStatus = async () => {
             try {
-                const tmb_status = await Promise.race([
-                    isTmbEnabled(),
-                    new Promise<boolean>(resolve => window.setTimeout(() => resolve(false), 2500)),
-                ]);
-                const final_status = tmb_status || window.is_tmb_enabled === true;
-
-                setIsTmbEnabled(final_status);
+                const tmb_status = await isTmbEnabled();
+                if (!cancelled) {
+                    setIsTmbEnabled(tmb_status);
+                }
             } catch (error) {
-                console.error('TMB check failed:', error);
+                console.error('[TMB] initialization failed:', error);
+                if (!cancelled) setIsTmbEnabled(false);
             } finally {
-                setIsTmbCheckComplete(true);
+                if (!cancelled) setIsTmbCheckComplete(true);
             }
         };
 
         checkTmbStatus();
-    }, []);
-
-    // Initialize API when TMB check is complete with timeout fallback
-    useEffect(() => {
-        if (!is_tmb_check_complete) {
-            return; // Wait until TMB check is complete
-        }
-
-        const timeoutId = setTimeout(() => {
-            if (!is_api_initialized) {
-                setIsApiInitialized(true);
+        const timeoutId = window.setTimeout(() => {
+            console.warn('[TMB] remote configuration timeout');
+            if (!cancelled) {
+                setIsTmbEnabled(false);
+                setIsTmbCheckComplete(true);
             }
-        }, 5000);
+        }, 3500);
 
+        return () => {
+            cancelled = true;
+            window.clearTimeout(timeoutId);
+        };
+    }, [isTmbEnabled]);
+
+    // API initialization is also best-effort; the UI remains usable when it is unavailable.
+    useEffect(() => {
+        if (!is_tmb_check_complete) return;
+
+        let cancelled = false;
+        console.log('[API] initialization started');
         const initializeApi = async () => {
-            if (!api_base_initialized.current) {
-                try {
-                    await api_base.init();
+            try {
+                if (!api_base_initialized.current) {
+                    await Promise.race([
+                        api_base.init(),
+                        new Promise<never>((_, reject) =>
+                            window.setTimeout(() => reject(new Error('API initialization timeout')), 5000)
+                        ),
+                    ]);
                     api_base_initialized.current = true;
-                } catch (error) {
-                    console.error('API initialization failed:', error);
-                    api_base_initialized.current = false;
-                } finally {
-                    setIsApiInitialized(true);
-                    clearTimeout(timeoutId); // Clear timeout if API init completes
+                    console.log('[API] initialization completed');
                 }
+            } catch (error) {
+                console.error('[API] initialization failed:', error);
+            } finally {
+                if (!cancelled) setIsApiInitialized(true);
             }
         };
 
         initializeApi();
-        return () => clearTimeout(timeoutId);
+        return () => {
+            cancelled = true;
+        };
     }, [is_tmb_check_complete]);
+
+    // Independent guard for any initialization path that stalls.
+    useEffect(() => {
+        const timeoutId = window.setTimeout(() => {
+            if (!is_api_initialized) {
+                console.warn('[APP] initialization timeout');
+                console.warn('[APP] continuing without authentication');
+                setIsTmbEnabled(false);
+                setIsTmbCheckComplete(true);
+                setIsApiInitialized(true);
+            }
+        }, 5000);
+
+        return () => window.clearTimeout(timeoutId);
+    }, [is_api_initialized]);
 
     if (!store || !is_api_initialized) return <AppRootLoader />;
 

@@ -125,6 +125,12 @@ export const AuthWrapper = () => {
         }
 
         initializeAuth();
+        const authTimeout = window.setTimeout(() => {
+            console.warn('[APP] continuing without authentication');
+            setIsAuthComplete(true);
+        }, 5000);
+
+        return () => window.clearTimeout(authTimeout);
     }, [loginInfo, paramsToDelete, isOnline]);
 
     // Add timeout for offline scenarios to prevent infinite loading
