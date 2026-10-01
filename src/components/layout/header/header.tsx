@@ -1,6 +1,7 @@
-import { useCallback } from 'react';
+import { useCallback, useState } from 'react';
 import clsx from 'clsx';
 import { observer } from 'mobx-react-lite';
+import LoginModal from '@/components/login-modal/login-modal';
 import PWAInstallButton from '@/components/pwa-install-button';
 import { generateOAuthURL, standalone_routes } from '@/components/shared';
 import Button from '@/components/shared_ui/button';
@@ -45,7 +46,34 @@ const AppHeader = observer(({ isAuthenticating }: TAppHeaderProps) => {
     const { hubEnabledCountryList } = useFirebaseCountriesConfig();
     const { onRenderTMBCheck, isTmbEnabled } = useTMB();
     const is_tmb_enabled = isTmbEnabled() || window.is_tmb_enabled === true;
-    // No need for additional state management here since we're handling it in the layout component
+    const [is_login_modal_open, setIsLoginModalOpen] = useState(false);
+
+    const handleDerivLogin = async () => {
+        setIsLoginModalOpen(false);
+        clearAuthData(false);
+        const getQueryParams = new URLSearchParams(window.location.search);
+        const query_param_currency =
+            getQueryParams.get('account') ?? sessionStorage.getItem('query_param_currency') ?? 'USD';
+
+        try {
+            const tmbEnabled = await isTmbEnabled();
+            if (tmbEnabled) {
+                await onRenderTMBCheck(true);
+            } else {
+                try {
+                    await requestOidcAuthentication({
+                        redirectCallbackUri: `${window.location.origin}/callback`,
+                        ...(query_param_currency ? { state: { account: query_param_currency } } : {}),
+                    });
+                } catch (err) {
+                    handleOidcAuthFailure(err);
+                    window.location.replace(generateOAuthURL());
+                }
+            }
+        } catch (error) {
+            console.error('[Auth] Deriv login failed:', error);
+        }
+    };
 
     const renderAccountSection = useCallback(() => {
         // Show loader during authentication processes
@@ -135,45 +163,7 @@ const AppHeader = observer(({ isAuthenticating }: TAppHeaderProps) => {
         } else {
             return (
                 <div className='auth-actions'>
-                    <Button
-                        tertiary
-                        onClick={async () => {
-                            clearAuthData(false);
-                            const getQueryParams = new URLSearchParams(window.location.search);
-                            const currency = getQueryParams.get('account') ?? '';
-                            const query_param_currency =
-                                currency || sessionStorage.getItem('query_param_currency') || 'USD';
-
-                            try {
-                                // First, explicitly wait for TMB status to be determined
-                                const tmbEnabled = await isTmbEnabled();
-                                // Now use the result of the explicit check
-                                if (tmbEnabled) {
-                                    await onRenderTMBCheck(true); // Pass true to indicate it's from login button
-                                } else {
-                                    // Always use OIDC if TMB is not enabled
-                                    try {
-                                        await requestOidcAuthentication({
-                                            redirectCallbackUri: `${window.location.origin}/callback`,
-                                            ...(query_param_currency
-                                                ? {
-                                                      state: {
-                                                          account: query_param_currency,
-                                                      },
-                                                  }
-                                                : {}),
-                                        });
-                                    } catch (err) {
-                                        handleOidcAuthFailure(err);
-                                        window.location.replace(generateOAuthURL());
-                                    }
-                                }
-                            } catch (error) {
-                                // eslint-disable-next-line no-console
-                                console.error(error);
-                            }
-                        }}
-                    >
+                    <Button tertiary onClick={() => setIsLoginModalOpen(true)}>
                         <Localize i18n_default_text='Log in' />
                     </Button>
                     <Button
@@ -223,6 +213,11 @@ const AppHeader = observer(({ isAuthenticating }: TAppHeaderProps) => {
                 {!isDesktop && <PWAInstallButton variant='primary' size='medium' />}
                 {renderAccountSection()}
             </Wrapper>
+            <LoginModal
+                is_open={is_login_modal_open}
+                on_close={() => setIsLoginModalOpen(false)}
+                on_deriv_login={handleDerivLogin}
+            />
             {/* <PWAInstallModalTest /> */}
         </Header>
     );
