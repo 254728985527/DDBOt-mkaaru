@@ -3,5 +3,6 @@ export { api_base } from './api-base';
 export { default as ApiHelpers } from './api-helpers';
 export { default as ContractsFor } from './contracts-for';
 export { default as NetworkMonitor } from './network_monitor';
+export { default as public_market_data, PUBLIC_MARKET_DATA_URL } from './public-market-data';
 export { default as ServerTime } from './server_time';
 export { default as TradingTimes } from './trading-times';

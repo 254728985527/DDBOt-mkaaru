@@ -15,6 +15,7 @@ import {
 import ApiHelpers from './api-helpers';
 import { generateDerivApiInstance, V2GetActiveClientId, V2GetActiveToken } from './appId';
 import chart_api from './chart-api';
+import { public_market_data } from './public-market-data';
 
 type CurrentSubscription = {
     id: string;
@@ -103,7 +104,7 @@ class APIBase {
             this.api?.connection.addEventListener('close', this.onsocketclose.bind(this));
         }
 
-        if (!this.has_active_symbols && !V2GetActiveToken()) {
+        if (!this.has_active_symbols) {
             this.active_symbols_promise = this.getActiveSymbols();
         }
 
@@ -238,7 +239,20 @@ class APIBase {
     }
 
     getActiveSymbols = async () => {
-        await doUntilDone(() => this.api?.send({ active_symbols: 'brief' }), [], this).then(
+        const public_symbols = await public_market_data.loadActiveSymbols();
+        if (public_symbols.length) {
+            const pip_sizes = {};
+            public_symbols.forEach(({ symbol, pip }: { symbol: string; pip?: string }) => {
+                if (pip) (pip_sizes as Record<string, number>)[symbol] = +(+pip).toExponential().substring(3);
+            });
+            this.has_active_symbols = true;
+            this.pip_sizes = pip_sizes as Record<string, number>;
+            this.active_symbols = public_symbols;
+            this.toggleRunButton(false);
+            return public_symbols;
+        }
+
+        return doUntilDone(() => this.api?.send({ active_symbols: 'brief' }), [], this).then(
             ({ active_symbols = [], error = {} }) => {
                 const pip_sizes = {};
                 if (active_symbols.length) this.has_active_symbols = true;

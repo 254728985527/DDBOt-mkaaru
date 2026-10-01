@@ -1,6 +1,7 @@
 import { config } from '../../constants/config';
 import PendingPromise from '../../utils/pending-promise';
 import { api_base } from './api-base';
+import { public_market_data } from './public-market-data';
 
 export default class ContractsFor {
     constructor({ ws, server_time }) {
@@ -197,7 +198,10 @@ export default class ContractsFor {
             }
 
             this.retrieving_contracts_for[symbol] = new PendingPromise();
-            const response = await api_base.api.send({ contracts_for: symbol });
+            const public_contracts = await public_market_data.getContracts(symbol);
+            const response = public_contracts.length
+                ? { contracts_for: { available: public_contracts } }
+                : await api_base.api.send({ contracts_for: symbol });
 
             if (response.error) {
                 return [];
