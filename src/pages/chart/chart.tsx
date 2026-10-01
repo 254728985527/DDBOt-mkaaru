@@ -16,19 +16,8 @@ import ToolbarWidgets from './toolbar-widgets';
 import '@deriv/deriv-charts/dist/smartcharts.css';
 
 type TSubscription = {
-    [key: string]: null | {
-        unsubscribe?: () => void;
-    };
+    unsubscribe?: () => void;
 };
-
-type TError = null | {
-    error?: {
-        code?: string;
-        message?: string;
-    };
-};
-
-const subscriptions: TSubscription = {};
 
 const withTimeout = <T,>(promise: Promise<T>, timeout = 5000): Promise<T> =>
     Promise.race([
@@ -59,6 +48,8 @@ const Chart = observer(({ show_digits_stats }: { show_digits_stats: boolean }) =
         chart_subscription_id,
     } = chart_store;
     const chartSubscriptionIdRef = useRef(chart_subscription_id);
+    const streamSubscriptionRef = useRef<TSubscription | null>(null);
+    const requestVersionRef = useRef(0);
     const { isDesktop, isMobile } = useDevice();
     const { is_drawer_open } = run_panel;
     const { is_chart_modal_visible } = dashboard;
@@ -70,20 +61,6 @@ const Chart = observer(({ show_digits_stats }: { show_digits_stats: boolean }) =
         position: ui.is_chart_layout_default ? 'bottom' : 'left',
         theme: ui.is_dark_mode_on ? 'dark' : 'light',
     };
-    console.log({
-        chart_type,
-        getMarketsOrder,
-        granularity,
-        onSymbolChange,
-        setChartStatus,
-        symbol,
-        updateChartType,
-        updateGranularity,
-        updateSymbol,
-        setChartSubscriptionId,
-        chart_subscription_id,
-    });
-
     useEffect(() => {
         // Safari browser detection
         const isSafariBrowser = () => {
@@ -96,11 +73,10 @@ const Chart = observer(({ show_digits_stats }: { show_digits_stats: boolean }) =
         chart_api.init().catch(error => console.error('[CHART] chart initialization failed:', error));
 
         return () => {
-            Object.values(subscriptions).forEach(subscription => subscription?.unsubscribe?.());
-            Object.keys(subscriptions).forEach(id => delete subscriptions[id]);
-            if (chart_api.api?.connection?.readyState === WebSocket.OPEN) {
-                chart_api.api.forgetAll('ticks');
-            }
+            requestVersionRef.current += 1;
+            streamSubscriptionRef.current?.unsubscribe?.();
+            streamSubscriptionRef.current = null;
+            requestForgetStream(chartSubscriptionIdRef.current);
         };
     }, []);
 
@@ -121,34 +97,48 @@ const Chart = observer(({ show_digits_stats }: { show_digits_stats: boolean }) =
         return withTimeout(chart_api.api.send(req));
     };
     const requestForgetStream = (subscription_id: string) => {
-        if (subscription_id && chart_api.api?.connection?.readyState === WebSocket.OPEN) chart_api.api.forget(subscription_id);
+        streamSubscriptionRef.current?.unsubscribe?.();
+        streamSubscriptionRef.current = null;
+        if (subscription_id && chart_api.api?.connection?.readyState === WebSocket.OPEN) {
+            chart_api.api.forget(subscription_id);
+        }
+        chartSubscriptionIdRef.current = '';
+        setChartSubscriptionId('');
     };
 
     const requestSubscribe = async (req: TicksStreamRequest, callback: (data: any) => void) => {
+        const requestVersion = ++requestVersionRef.current;
+        requestForgetStream(chartSubscriptionIdRef.current);
         try {
             if (chart_api.api?.connection?.readyState !== WebSocket.OPEN) {
                 console.warn('[CHART] WebSocket not ready');
                 await chart_api.init();
             }
+            if (requestVersion !== requestVersionRef.current) return;
             if (chart_api.api?.connection?.readyState !== WebSocket.OPEN) {
-                setChartConnectionMessage('Chart connection is unavailable. Retrying...');
+                setChartConnectionMessage('Chart connection is unavailable. Retry the chart request.');
                 callback([]);
                 return;
             }
-            requestForgetStream(chartSubscriptionIdRef.current);
-            console.log('[CHART] requesting history');
+            console.log('[CHART] Requesting history:', req);
             const history = await withTimeout(chart_api.api.send(req), 5000);
-            console.log('[CHART] history received');
+            if (requestVersion !== requestVersionRef.current) return;
+            console.log('[CHART] History received:', history);
             setChartConnectionMessage('');
-            setChartSubscriptionId(history?.subscription?.id);
+            const subscriptionId = history?.subscription?.id ?? '';
+            chartSubscriptionIdRef.current = subscriptionId;
+            setChartSubscriptionId(subscriptionId);
             if (history) callback(history);
-            if (req.subscribe === 1 && history?.subscription?.id) {
-                console.log('[CHART] subscribing to ticks');
-                subscriptions[history.subscription.id] = chart_api.api.onMessage()?.subscribe(({ data }: { data: TicksHistoryResponse }) => callback(data));
+            if (req.subscribe === 1 && subscriptionId) {
+                streamSubscriptionRef.current =
+                    chart_api.api.onMessage()?.subscribe(({ data }: { data: TicksHistoryResponse }) => {
+                        if (requestVersion === requestVersionRef.current) callback(data);
+                    }) ?? null;
             }
-        } catch (e) {
-            console.error('[CHART] History request failed or timed out:', e);
-            setChartConnectionMessage('Chart connection is taking longer than expected. Retrying...');
+        } catch (error) {
+            if (requestVersion !== requestVersionRef.current) return;
+            console.error('[CHART] History request failed:', error);
+            setChartConnectionMessage('Chart data could not be loaded. Retry the chart request.');
             callback([]);
         }
     };
@@ -166,7 +156,11 @@ const Chart = observer(({ show_digits_stats }: { show_digits_stats: boolean }) =
             })}
             dir='ltr'
         >
-            {chartConnectionMessage && <div className='chart-connection-message' role='status'>{chartConnectionMessage}</div>}
+            {chartConnectionMessage && (
+                <div className='chart-connection-message' role='status'>
+                    {chartConnectionMessage}
+                </div>
+            )}
             <SmartChart
                 id='dbot'
                 barriers={barriers}
@@ -187,8 +181,8 @@ const Chart = observer(({ show_digits_stats }: { show_digits_stats: boolean }) =
                 enabledNavigationWidget={isDesktop}
                 granularity={granularity}
                 requestAPI={requestAPI}
-                requestForget={() => {}}
-                requestForgetStream={() => {}}
+                requestForget={requestForgetStream}
+                requestForgetStream={requestForgetStream}
                 requestSubscribe={requestSubscribe}
                 settings={settings}
                 symbol={symbol}
