@@ -1,5 +1,7 @@
 // Comprehensive Service Worker for Deriv Bot Offline Functionality
-const CACHE_NAME = 'deriv-bot-v1';
+// Bump this whenever the app shell or deployment asset graph changes. Keeping
+// generated JS/CSS out of this cache prevents stale chunk references.
+const CACHE_NAME = 'deriv-bot-v2';
 const OFFLINE_URL = '/offline.html';
 
 // Files to cache immediately on install
