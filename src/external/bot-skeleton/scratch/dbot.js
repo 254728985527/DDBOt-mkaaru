@@ -12,6 +12,35 @@ import { loadBlockly } from './blockly';
 import DBotStore from './dbot-store';
 import { isAllRequiredBlocksEnabled, updateDisabledBlocks, validateErrorOnBlockDelete } from './utils';
 
+// Blockly keeps subscription bookkeeping inside each workspace instance. Keep our
+// lifecycle state per instance so an old workspace can never be cleaned up using
+// the state of a newly-created workspace.
+const initializedWorkspaces = new WeakSet();
+const disposedWorkspaces = new WeakSet();
+
+export const disposeBlocklyWorkspace = workspace => {
+    if (!workspace) return;
+
+    if (!initializedWorkspaces.has(workspace)) {
+        console.warn('[BLOCKLY] workspace was not subscribed - cleanup skipped');
+        return;
+    }
+
+    if (disposedWorkspaces.has(workspace)) {
+        console.log('[BLOCKLY] workspace was not subscribed - cleanup skipped');
+        return;
+    }
+
+    console.log('[BLOCKLY] workspace unsubscribe');
+    disposedWorkspaces.add(workspace);
+    try {
+        workspace.dispose();
+        console.log('[BLOCKLY] workspace disposed');
+    } catch (error) {
+        console.warn('[BLOCKLY] Workspace unsubscribe failed:', error);
+    }
+};
+
 class DBot {
     constructor() {
         this.interpreter = null;
@@ -19,12 +48,14 @@ class DBot {
         this.before_run_funcs = [];
         this.symbol = null;
         this.is_bot_running = false;
+        this.workspace_init_cancelled = false;
     }
 
     /**
      * Initialises the workspace and mounts it to a container element (app_contents).
      */
     async initWorkspace(public_path, store, api_helpers_store, is_mobile, is_dark_mode) {
+        this.workspace_init_cancelled = false;
         await loadBlockly(is_dark_mode);
         const recent_files = await getSavedWorkspaces();
         this.interpreter = Interpreter();
@@ -191,6 +222,17 @@ class DBot {
                 window.addEventListener('drop', e => DBot.handleDropOver(e, handleFileChange));
                 // disable overflow
                 el_scratch_div.parentNode.style.overflow = 'hidden';
+                initializedWorkspaces.add(this.workspace);
+                console.log('[BLOCKLY] workspace created');
+                console.log('[BLOCKLY] workspace subscribed');
+
+                if (this.workspace_init_cancelled) {
+                    const workspace = this.workspace;
+                    disposeBlocklyWorkspace(workspace);
+                    if (window.Blockly.derivWorkspace === workspace) window.Blockly.derivWorkspace = null;
+                    this.workspace = null;
+                }
+
                 resolve();
             } catch (error) {
                 // TODO: Handle error.
@@ -198,6 +240,10 @@ class DBot {
                 throw error;
             }
         });
+    }
+
+    cancelWorkspaceInitialization() {
+        this.workspace_init_cancelled = true;
     }
 
     /** Compare stored strategy xml with currently running xml */

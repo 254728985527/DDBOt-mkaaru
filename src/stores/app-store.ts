@@ -7,7 +7,7 @@ import {
     showDigitalOptionsUnavailableError,
     standalone_routes,
 } from '@/components/shared';
-import { api_base, ApiHelpers, DBot, runIrreversibleEvents } from '@/external/bot-skeleton';
+import { api_base, ApiHelpers, DBot, disposeBlocklyWorkspace, runIrreversibleEvents } from '@/external/bot-skeleton';
 import { setCurrency } from '@/external/bot-skeleton/scratch/utils';
 import { TApiHelpersStore } from '@/types/stores.types';
 import { localize } from '@deriv-com/translations';
@@ -202,11 +202,16 @@ export default class AppStore {
     };
 
     onUnmount = () => {
+        DBot.cancelWorkspaceInitialization();
         DBot.terminateBot();
         DBot.terminateConnection();
-        if (window.Blockly?.derivWorkspace) {
-            clearInterval(window.Blockly?.derivWorkspace.save_workspace_interval);
-            window.Blockly.derivWorkspace?.dispose();
+        const workspace = window.Blockly?.derivWorkspace;
+        if (workspace) {
+            clearInterval(workspace.save_workspace_interval);
+            disposeBlocklyWorkspace(workspace);
+            if (window.Blockly.derivWorkspace === workspace) {
+                window.Blockly.derivWorkspace = null;
+            }
         }
         if (typeof this.disposeReloadOnLanguageChangeReaction === 'function') {
             this.disposeReloadOnLanguageChangeReaction();
