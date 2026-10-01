@@ -203,8 +203,12 @@ const AppContent = observer(() => {
                 return;
             }
 
-            active_symbols
-                .retrieveActiveSymbols(true)
+            Promise.race([
+                active_symbols.retrieveActiveSymbols(true),
+                new Promise((_, reject) =>
+                    setTimeout(() => reject(new Error('Active symbols request timed out')), 10000)
+                ),
+            ])
                 .then(() => {
                     setIsLoading(false);
                 })
