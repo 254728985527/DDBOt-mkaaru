@@ -65,6 +65,17 @@ class ChartAPI {
         return this.reconnectPromise;
     };
 
+    ensureReady = async () => {
+        const connection = this.api?.connection;
+        if (connection?.readyState === WebSocket.OPEN) return this.api;
+
+        const api = await this.init(
+            connection?.readyState === WebSocket.CLOSING || connection?.readyState === WebSocket.CLOSED
+        );
+        await this.waitForConnectionOpen(api?.connection);
+        return api;
+    };
+
     getTime() {
         if (!this.time_interval) {
             this.time_interval = setInterval(() => {

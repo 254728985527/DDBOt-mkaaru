@@ -89,12 +89,11 @@ const Chart = observer(({ show_digits_stats }: { show_digits_stats: boolean }) =
     }, [symbol, updateSymbol]);
 
     const requestAPI = async (req: ServerTimeRequest | ActiveSymbolsRequest | TradingTimesRequest) => {
-        if (chart_api.api?.connection?.readyState !== WebSocket.OPEN) {
-            console.warn('[CHART] WebSocket not ready');
-            await chart_api.init();
+        const api = await chart_api.ensureReady();
+        if (!api?.connection || api.connection.readyState !== WebSocket.OPEN) {
+            throw new Error('Chart WebSocket is not ready');
         }
-        if (chart_api.api?.connection?.readyState !== WebSocket.OPEN) throw new Error('Chart WebSocket is not ready');
-        return withTimeout(chart_api.api.send(req));
+        return withTimeout(api.send(req));
     };
     const requestForgetStream = (subscription_id: string) => {
         streamSubscriptionRef.current?.unsubscribe?.();
@@ -110,18 +109,15 @@ const Chart = observer(({ show_digits_stats }: { show_digits_stats: boolean }) =
         const requestVersion = ++requestVersionRef.current;
         requestForgetStream(chartSubscriptionIdRef.current);
         try {
-            if (chart_api.api?.connection?.readyState !== WebSocket.OPEN) {
-                console.warn('[CHART] WebSocket not ready');
-                await chart_api.init();
-            }
+            const api = await chart_api.ensureReady();
             if (requestVersion !== requestVersionRef.current) return;
-            if (chart_api.api?.connection?.readyState !== WebSocket.OPEN) {
+            if (!api?.connection || api.connection.readyState !== WebSocket.OPEN) {
                 setChartConnectionMessage('Chart connection is unavailable. Retry the chart request.');
                 callback([]);
                 return;
             }
             console.log('[CHART] Requesting history:', req);
-            const history = await withTimeout(chart_api.api.send(req), 5000);
+            const history = await withTimeout(api.send(req), 5000);
             if (requestVersion !== requestVersionRef.current) return;
             console.log('[CHART] History received:', history);
             setChartConnectionMessage('');
