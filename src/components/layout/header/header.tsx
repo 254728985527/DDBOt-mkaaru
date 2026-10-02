@@ -3,7 +3,7 @@ import clsx from 'clsx';
 import { observer } from 'mobx-react-lite';
 import LoginModal from '@/components/login-modal/login-modal';
 import PWAInstallButton from '@/components/pwa-install-button';
-import { generateOAuthURL, standalone_routes } from '@/components/shared';
+import { standalone_routes } from '@/components/shared';
 import Button from '@/components/shared_ui/button';
 import useActiveAccount from '@/hooks/api/account/useActiveAccount';
 import { useOauth2 } from '@/hooks/auth/useOauth2';
@@ -11,9 +11,9 @@ import { useFirebaseCountriesConfig } from '@/hooks/firebase/useFirebaseCountrie
 import { useApiBase } from '@/hooks/useApiBase';
 import { useStore } from '@/hooks/useStore';
 import useTMB from '@/hooks/useTMB';
-import { clearAuthData, handleOidcAuthFailure } from '@/utils/auth-utils';
+import { clearAuthData } from '@/utils/auth-utils';
+import { redirectToDerivOAuthLogin } from '@/components/shared/utils/login/login';
 import { StandaloneCircleUserRegularIcon } from '@deriv/quill-icons/Standalone';
-import { requestOidcAuthentication } from '@deriv-com/auth-client';
 import { Localize, useTranslations } from '@deriv-com/translations';
 import { Header, useDevice, Wrapper } from '@deriv-com/ui';
 import { Tooltip } from '@deriv-com/ui';
@@ -51,24 +51,12 @@ const AppHeader = observer(({ isAuthenticating }: TAppHeaderProps) => {
     const handleDerivLogin = async () => {
         setIsLoginModalOpen(false);
         clearAuthData(false);
-        const getQueryParams = new URLSearchParams(window.location.search);
-        const query_param_currency =
-            getQueryParams.get('account') ?? sessionStorage.getItem('query_param_currency') ?? 'USD';
-
         try {
             const tmbEnabled = await isTmbEnabled();
             if (tmbEnabled) {
                 await onRenderTMBCheck(true);
             } else {
-                try {
-                    await requestOidcAuthentication({
-                        redirectCallbackUri: `${window.location.origin}/callback`,
-                        ...(query_param_currency ? { state: { account: query_param_currency } } : {}),
-                    });
-                } catch (err) {
-                    handleOidcAuthFailure(err);
-                    window.location.replace(generateOAuthURL());
-                }
+                await redirectToDerivOAuthLogin('en');
             }
         } catch (error) {
             console.error('[Auth] Deriv login failed:', error);

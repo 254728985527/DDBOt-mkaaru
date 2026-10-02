@@ -24,6 +24,46 @@ type TLoginUrl = {
     language: string;
 };
 
+const toBase64Url = (bytes: Uint8Array) =>
+    btoa(String.fromCharCode(...bytes))
+        .replace(/\+/g, '-')
+        .replace(/\//g, '_')
+        .replace(/=+$/, '');
+
+const createRandomString = (length: number) => {
+    const bytes = crypto.getRandomValues(new Uint8Array(length));
+    const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~';
+    return Array.from(bytes, byte => alphabet[byte % alphabet.length]).join('');
+};
+
+export const redirectToDerivOAuthLogin = async (language = 'en') => {
+    const client_id = getAppId();
+    if (!client_id) {
+        throw new Error('Deriv OAuth client_id is not configured');
+    }
+
+    const code_verifier = createRandomString(64);
+    const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(code_verifier));
+    const code_challenge = toBase64Url(new Uint8Array(digest));
+    const state = createRandomString(32);
+    const redirect_uri = `${window.location.origin}/callback`;
+
+    sessionStorage.setItem('pkce_code_verifier', code_verifier);
+    sessionStorage.setItem('oauth_state', state);
+
+    const params = new URLSearchParams({
+        response_type: 'code',
+        client_id,
+        redirect_uri,
+        scope: 'trade account_manage application_read payment',
+        state,
+        code_challenge,
+        code_challenge_method: 'S256',
+    });
+
+    window.location.assign(`https://auth.deriv.com/oauth2/auth?${params.toString()}`);
+};
+
 export const loginUrl = ({ language }: TLoginUrl) => {
     const server_url = LocalStore.get('config.server_url');
     const signup_device_cookie = new (CookieStorage as any)('signup_device');
