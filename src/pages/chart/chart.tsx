@@ -33,6 +33,7 @@ const Chart = observer(({ show_digits_stats }: { show_digits_stats: boolean }) =
     const { chart_store, run_panel, dashboard } = useStore();
     const [isSafari, setIsSafari] = useState(false);
     const [chartConnectionMessage, setChartConnectionMessage] = useState('');
+    const [isConnectionOpened, setIsConnectionOpened] = useState(false);
 
     const {
         chart_type,
@@ -70,9 +71,42 @@ const Chart = observer(({ show_digits_stats }: { show_digits_stats: boolean }) =
 
         setIsSafari(isSafariBrowser());
 
-        chart_api.init().catch(error => console.error('[CHART] chart initialization failed:', error));
+        let connection: WebSocket | undefined;
+        let cancelled = false;
+
+        const handleOpen = () => {
+            if (!cancelled) {
+                setIsConnectionOpened(true);
+                setChartConnectionMessage('');
+            }
+        };
+        const handleClose = () => {
+            if (!cancelled) setIsConnectionOpened(false);
+        };
+
+        chart_api
+            .init()
+            .then(api => {
+                if (cancelled || !api?.connection) return;
+                connection = api.connection;
+                connection.addEventListener('open', handleOpen);
+                connection.addEventListener('close', handleClose);
+                connection.addEventListener('error', handleClose);
+                if (connection.readyState === WebSocket.OPEN) handleOpen();
+            })
+            .catch(error => {
+                if (!cancelled) {
+                    setIsConnectionOpened(false);
+                    setChartConnectionMessage('Chart connection is unavailable. Retry the chart request.');
+                    console.error('[CHART] chart initialization failed:', error);
+                }
+            });
 
         return () => {
+            cancelled = true;
+            connection?.removeEventListener('open', handleOpen);
+            connection?.removeEventListener('close', handleClose);
+            connection?.removeEventListener('error', handleClose);
             requestVersionRef.current += 1;
             streamSubscriptionRef.current?.unsubscribe?.();
             streamSubscriptionRef.current = null;
@@ -142,7 +176,6 @@ const Chart = observer(({ show_digits_stats }: { show_digits_stats: boolean }) =
     if (!symbol) {
         return <div className='dashboard__chart-wrapper chart-loading-state'>Loading market chart...</div>;
     }
-    const is_connection_opened = chart_api?.api?.connection?.readyState === WebSocket.OPEN;
     return (
         <div
             className={classNames('dashboard__chart-wrapper', {
@@ -183,7 +216,7 @@ const Chart = observer(({ show_digits_stats }: { show_digits_stats: boolean }) =
                 settings={settings}
                 symbol={symbol}
                 topWidgets={() => <ChartTitle onChange={onSymbolChange} />}
-                isConnectionOpened={is_connection_opened}
+                isConnectionOpened={isConnectionOpened}
                 getMarketsOrder={getMarketsOrder}
                 isLive
                 leftMargin={80}
