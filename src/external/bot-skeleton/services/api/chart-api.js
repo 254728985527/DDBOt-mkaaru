@@ -53,20 +53,14 @@ class ChartAPI {
                 this.api.disconnect();
             }
 
-            let nextApi = await generateDerivApiInstance('wss://api.derivws.com/trading/v1/options/ws/public');
+            // Use the app's configured Deriv socket. The API wrapper adds the
+            // app id and handles the response protocol expected by SmartChart.
+            const nextApi = await generateDerivApiInstance();
             try {
-                await this.waitForConnectionOpen(nextApi?.connection, 10000);
-            } catch (publicError) {
-                console.warn('[CHART] Public market-data socket unavailable; using the Deriv chart socket.');
+                await this.waitForConnectionOpen(nextApi?.connection, 15000);
+            } catch {
                 nextApi?.disconnect?.();
-                try {
-                    nextApi = await generateDerivApiInstance();
-                    await this.waitForConnectionOpen(nextApi?.connection, 10000);
-                } catch {
-                    console.warn('[CHART] Chart data is temporarily unavailable.');
-                    nextApi?.disconnect?.();
-                    return null;
-                }
+                return null;
             }
 
             this.api = nextApi;

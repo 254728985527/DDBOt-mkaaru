@@ -124,9 +124,10 @@ const Chart = observer(({ show_digits_stats }: { show_digits_stats: boolean }) =
     const requestAPI = async (req: ServerTimeRequest | ActiveSymbolsRequest | TradingTimesRequest) => {
         const api = await chart_api.ensureReady();
         if (!api?.connection || api.connection.readyState !== WebSocket.OPEN) {
-            throw new Error('Chart WebSocket is not ready');
+            setChartConnectionMessage('Market data is temporarily unavailable.');
+            return {};
         }
-        return withTimeout(api.send(req));
+        return withTimeout(api.send(req)).catch(() => ({}));
     };
     const requestForgetStream = (subscription_id: string) => {
         streamSubscriptionRef.current?.unsubscribe?.();
@@ -150,7 +151,7 @@ const Chart = observer(({ show_digits_stats }: { show_digits_stats: boolean }) =
                 return;
             }
             console.log('[CHART] Requesting history:', req);
-            const history = await withTimeout(api.send(req), 5000);
+            const history = await withTimeout(api.send(req), 10000);
             if (requestVersion !== requestVersionRef.current) return;
             console.log('[CHART] History received:', history);
             setChartConnectionMessage('');
