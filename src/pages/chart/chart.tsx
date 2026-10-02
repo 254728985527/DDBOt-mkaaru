@@ -94,11 +94,10 @@ const Chart = observer(({ show_digits_stats }: { show_digits_stats: boolean }) =
                 connection.addEventListener('error', handleClose);
                 if (connection.readyState === WebSocket.OPEN) handleOpen();
             })
-            .catch(error => {
+            .catch(() => {
                 if (!cancelled) {
                     setIsConnectionOpened(false);
-                    setChartConnectionMessage('Chart connection is unavailable. Retry the chart request.');
-                    console.error('[CHART] chart initialization failed:', error);
+                    setChartConnectionMessage('Chart data is temporarily unavailable. Please retry.');
                 }
             });
 
@@ -167,7 +166,6 @@ const Chart = observer(({ show_digits_stats }: { show_digits_stats: boolean }) =
             }
         } catch (error) {
             if (requestVersion !== requestVersionRef.current) return;
-            console.error('[CHART] History request failed:', error);
             setChartConnectionMessage('Chart data could not be loaded. Retry the chart request.');
             callback([]);
         }

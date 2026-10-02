@@ -55,12 +55,18 @@ class ChartAPI {
 
             let nextApi = await generateDerivApiInstance('wss://api.derivws.com/trading/v1/options/ws/public');
             try {
-                await this.waitForConnectionOpen(nextApi?.connection);
+                await this.waitForConnectionOpen(nextApi?.connection, 10000);
             } catch (publicError) {
-                console.warn('[CHART] Public market-data socket unavailable; using the Deriv chart socket.', publicError);
+                console.warn('[CHART] Public market-data socket unavailable; using the Deriv chart socket.');
                 nextApi?.disconnect?.();
-                nextApi = await generateDerivApiInstance();
-                await this.waitForConnectionOpen(nextApi?.connection);
+                try {
+                    nextApi = await generateDerivApiInstance();
+                    await this.waitForConnectionOpen(nextApi?.connection, 10000);
+                } catch {
+                    console.warn('[CHART] Chart data is temporarily unavailable.');
+                    nextApi?.disconnect?.();
+                    return null;
+                }
             }
 
             this.api = nextApi;
@@ -82,7 +88,14 @@ class ChartAPI {
         const api = await this.init(
             connection?.readyState === WebSocket.CLOSING || connection?.readyState === WebSocket.CLOSED
         );
-        await this.waitForConnectionOpen(api?.connection);
+        if (!api?.connection) return null;
+        if (api.connection.readyState !== WebSocket.OPEN) {
+            try {
+                await this.waitForConnectionOpen(api.connection, 10000);
+            } catch {
+                return null;
+            }
+        }
         return api;
     };
 
