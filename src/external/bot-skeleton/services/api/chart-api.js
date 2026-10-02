@@ -52,8 +52,18 @@ class ChartAPI {
                 this.api.connection.removeEventListener('close', this.onsocketclose);
                 this.api.disconnect();
             }
-            this.api = await generateDerivApiInstance();
-            await this.waitForConnectionOpen(this.api?.connection);
+
+            let nextApi = await generateDerivApiInstance('wss://api.derivws.com/trading/v1/options/ws/public');
+            try {
+                await this.waitForConnectionOpen(nextApi?.connection);
+            } catch (publicError) {
+                console.warn('[CHART] Public market-data socket unavailable; using the Deriv chart socket.', publicError);
+                nextApi?.disconnect?.();
+                nextApi = await generateDerivApiInstance();
+                await this.waitForConnectionOpen(nextApi?.connection);
+            }
+
+            this.api = nextApi;
             this.api?.connection?.addEventListener('close', this.onsocketclose);
             this.reconnectAttempts = 0;
             this.getTime();
