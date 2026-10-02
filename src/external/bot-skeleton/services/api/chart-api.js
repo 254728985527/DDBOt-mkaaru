@@ -10,6 +10,38 @@ class ChartAPI {
         this.reconnectIfNotConnected();
     };
 
+    waitForConnectionOpen = (connection, timeout = 5000) => {
+        if (!connection) return Promise.reject(new Error('Chart WebSocket is unavailable'));
+        if (connection.readyState === WebSocket.OPEN) return Promise.resolve();
+
+        return new Promise((resolve, reject) => {
+            let settled = false;
+            const finish = (callback, value) => {
+                if (settled) return;
+                settled = true;
+                window.clearTimeout(timeoutId);
+                connection.removeEventListener('open', handleOpen);
+                connection.removeEventListener('error', handleError);
+                connection.removeEventListener('close', handleClose);
+                callback(value);
+            };
+            const handleOpen = () => {
+                console.log('[CHART] WebSocket connected');
+                finish(resolve);
+            };
+            const handleError = () => finish(reject, new Error('Chart WebSocket connection failed'));
+            const handleClose = () => finish(reject, new Error('Chart WebSocket closed before opening'));
+            const timeoutId = window.setTimeout(
+                () => finish(reject, new Error('Chart WebSocket connection timed out')),
+                timeout
+            );
+
+            connection.addEventListener('open', handleOpen, { once: true });
+            connection.addEventListener('error', handleError, { once: true });
+            connection.addEventListener('close', handleClose, { once: true });
+        });
+    };
+
     init = async (force_create_connection = false) => {
         const readyState = this.api?.connection?.readyState;
         if (!force_create_connection && readyState === WebSocket.OPEN) return this.api;
@@ -21,6 +53,7 @@ class ChartAPI {
                 this.api.disconnect();
             }
             this.api = await generateDerivApiInstance();
+            await this.waitForConnectionOpen(this.api?.connection);
             this.api?.connection?.addEventListener('close', this.onsocketclose);
             this.reconnectAttempts = 0;
             this.getTime();
